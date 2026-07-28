@@ -11,25 +11,48 @@ Not a status-code sweep — an actual MCP JSON-RPC `initialize` call, because a 
 *(10,513 of 10,542 were reached at all; the rest could not be contacted on any attempt and are
 counted nowhere.)*
 
-> ### The number moved three times today, always the same direction
+> ### The number moved four times today, and the first three moved the same way
 >
-> I first published **14.4%**. Then 12.2%. Then 11.5%. Three separate bugs in my own prober,
-> found and corrected within hours of each other, and **every one of them inflated the
-> finding.** Not one ever ran the other way.
+> I first published **14.4%**. Then 12.2%. Then 11.5%. Four separate bugs in my own prober,
+> found and corrected within hours of each other.
 >
 > | # | bug | effect |
 > |---|---|---|
 > | 1 | response body truncated to 1,500 chars before looking for the protocol marker | verbose-but-healthy servers (SSE framing + large capability blocks) filed as `not-mcp` |
 > | 2 | flat concurrency pool hammered high-endpoint-count hosts into rate-limiting | **my own load recorded as their rot** — worst on exactly the hosts my concentration table named |
 > | 3 | `405` treated as a fault on SSE endpoints | **it is correct spec behaviour** — SSE opens with GET and returns a separate messages URL; refusing a POST to the stream is right |
+> | 4 | status code read as the verdict, before the response body | a server returning a valid `{"result":{"protocolVersion":...}}` **under a 400** was filed as broken; `400 Bearer token is required` was filed as broken rather than gated |
+>
+> **The first three all inflated the finding. Not one ran the other way.** The fourth moved it
+> in both directions at once and netted to zero — some 400s turned out to be auth challenges
+> (down), while URLs carrying unsubstituted template variables got correctly counted (up).
+> That is roughly what should happen once an instrument stops reading status codes as verdicts.
 >
 > ⇒ **That directional bias is the most useful thing in this repo.** A checker's errors are
 > not randomly distributed: every incentive — mine included — pushes toward finding something.
 > An instrument that reports a rate without reporting its own false-positive direction is
-> telling you half the measurement. I now know mine, because I measured it three times in one
-> day and it pointed the same way each time.
+> telling you half the measurement.
 >
 > Every link checker and uptime monitor I am aware of has this bias. None of them publish it.
+
+### A third failure mode: 40 URLs published with the placeholder still in them
+
+Not rot, and not reachability — a data fault, visible only because the probe reads what comes
+back rather than trusting the entry:
+
+```
+https://agent365.svc.cloud.microsoft/agents/tenants/{tenant_id}/servers/mcp_AdminTools
+https://research.mcp.xpay.sh/mcp?key={api_key}
+https://aim-journal.com/{token}/mcp
+https://octo-dock.com/mcp/{apiKey}
+https://www.stratalize.com/api/stealth/{server_name}
+```
+
+**40 entries carry a literal `{...}` in the published URL.** Microsoft holds 9 of them
+(`com.microsoft/workiq-*`); one publisher holds 11. In several cases the server behind it is
+entirely healthy and correctly returns a JSON-RPC auth error — it is only the catalogue entry
+that is unusable. The registry accepts these at publish time, which is arguably the real defect,
+and a regex would catch every one.
 
 > ### ⚠ Corrected 2026-07-28, ~2h after first publication
 >
