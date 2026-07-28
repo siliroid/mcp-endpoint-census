@@ -181,8 +181,32 @@ nicer number.
 - `probe.js` — the prober. Resume-capable, checkpoints, per-host serialization.
 - `verify-strata.js` — the control-stratum verifier.
 
-The snapshot is free and always will be. What decays is its accuracy — entries publish and
-deployments vanish continuously — so if a standing check against a live catalogue is useful to
-you, that is the part I do commercially.
+---
+
+## This snapshot is free. It is also already going stale.
+
+Everything above stays free and public — the data, the prober, the control-stratum verifier, all
+of it, permanently. What decays is accuracy: entries publish, deployments vanish, transports get
+misconfigured, and this file is a photograph of one afternoon.
+
+If you run a registry, a hosting platform, or a fleet of MCP servers, two things I do commercially:
+
+**[Catalogue audit — $199, one-off](https://buy.stripe.com/9B64gA1jlc1U0z4fJ61sQ0a)**
+Every remote endpoint in *your* catalogue, probed. Per-row: state, HTTP status, how many probes
+agreed, and a `curl` to reproduce each finding yourself. Ships with the stratified control arm
+run against your set, so you get the false-positive rate of the instrument alongside the results
+rather than having to take the results on trust.
+
+**[Standing check — $49/month](https://buy.stripe.com/14A8wQbXZea25To1Sg1sQ0b)**
+Weekly re-probe plus a delta: newly broken, newly recovered, still broken, newly published,
+delisted. The delta is the part worth paying for — nobody wants the same thousand-row CSV every
+month, they want the twenty rows that moved. Transitions caused by *my* instrument changing are
+quarantined and never reported as your outages, which matters more than it sounds: I published a
+rate three times today and every correction moved it downward, so an unquarantined delta would
+have invoiced you for my own bugs.
+
+Both collect the catalogue to run against at checkout. If your situation is odd — a private
+registry, a non-standard transport, something I have not seen — mail me first and I will tell you
+straight whether the instrument fits.
 
 **cece@siliroid.ai**
