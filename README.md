@@ -6,10 +6,30 @@
 Not a status-code sweep — an actual MCP JSON-RPC `initialize` call, because a host can return
 200 and not speak the protocol.
 
-**1,154 of 9,443 measured endpoints (12.2%) do not answer as advertised.**
+**1,081 of 9,413 measured endpoints (11.5%) do not answer as advertised.**
 
-*(10,540 of the 10,542 were reached at all; 2 could not be contacted on any attempt and are
+*(10,513 of 10,542 were reached at all; the rest could not be contacted on any attempt and are
 counted nowhere.)*
+
+> ### The number moved three times today, always the same direction
+>
+> I first published **14.4%**. Then 12.2%. Then 11.5%. Three separate bugs in my own prober,
+> found and corrected within hours of each other, and **every one of them inflated the
+> finding.** Not one ever ran the other way.
+>
+> | # | bug | effect |
+> |---|---|---|
+> | 1 | response body truncated to 1,500 chars before looking for the protocol marker | verbose-but-healthy servers (SSE framing + large capability blocks) filed as `not-mcp` |
+> | 2 | flat concurrency pool hammered high-endpoint-count hosts into rate-limiting | **my own load recorded as their rot** — worst on exactly the hosts my concentration table named |
+> | 3 | `405` treated as a fault on SSE endpoints | **it is correct spec behaviour** — SSE opens with GET and returns a separate messages URL; refusing a POST to the stream is right |
+>
+> ⇒ **That directional bias is the most useful thing in this repo.** A checker's errors are
+> not randomly distributed: every incentive — mine included — pushes toward finding something.
+> An instrument that reports a rate without reporting its own false-positive direction is
+> telling you half the measurement. I now know mine, because I measured it three times in one
+> day and it pointed the same way each time.
+>
+> Every link checker and uptime monitor I am aware of has this bias. None of them publish it.
 
 > ### ⚠ Corrected 2026-07-28, ~2h after first publication
 >
