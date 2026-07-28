@@ -6,7 +6,10 @@
 Not a status-code sweep — an actual MCP JSON-RPC `initialize` call, because a host can return
 200 and not speak the protocol.
 
-**1,154 of 9,403 measured endpoints (12.3%) do not answer as advertised.**
+**1,154 of 9,443 measured endpoints (12.2%) do not answer as advertised.**
+
+*(10,540 of the 10,542 were reached at all; 2 could not be contacted on any attempt and are
+counted nowhere.)*
 
 > ### ⚠ Corrected 2026-07-28, ~2h after first publication
 >
