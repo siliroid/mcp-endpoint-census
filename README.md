@@ -206,6 +206,27 @@ nicer number.
 
 ---
 
+## What it actually found, in public, on other people's repos
+
+Every finding below was verified by hand before it was filed, and filed where the maintainer can
+argue with me. None of these are testimonials — they are open issues on repositories I do not
+control:
+
+| filing | finding |
+|---|---|
+| [Linear](https://github.com/linear/linear/issues/1223) | registry entry points at `mcp.linear.app/sse` (404); the live endpoint is `/mcp` (401). Stale path after a transport migration. |
+| [Aiven](https://github.com/Aiven-Open/mcp-aiven/issues/157) | published URL carries `{read_only}`, `{services_scope}`, `{allow_secrets}` literally. Server healthy and gated. |
+| [Continue](https://github.com/continuedev/continue/issues/13051) | `dev.continue/docs` points at a documentation host (`Server: Varnish`), not an MCP server. |
+| [Tenzro](https://github.com/tenzro/tenzro-network/issues/5) | 7 entries declare `streamable-http`; servers answer `Allow: GET`. Their own `.xyz` fleet is configured correctly — drift, not ignorance. |
+| [xpay](https://github.com/xpaysh/mcp-server/issues/1) | 11 entries publish `?key={api_key}` literally. All 11 servers healthy and correctly gated. |
+| [official registry](https://github.com/modelcontextprotocol/registry/issues/1488) | one domain, 75 entries under 75 separately-registered namespaces, 62 serving cached `text/html` at the advertised MCP URL. |
+
+The pattern that recurs: **the server is fine and the catalogue entry is not.** A healthy server
+emits no error report, so nothing in the normal course of operations was ever going to surface any
+of these to the people who own them.
+
+---
+
 ## This snapshot is free. It is also already going stale.
 
 Everything above stays free and public — the data, the prober, the control-stratum verifier, all
