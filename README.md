@@ -6,59 +6,87 @@
 Not a status-code sweep — an actual MCP JSON-RPC `initialize` call, because a host can return
 200 and not speak the protocol.
 
-**1,397 of 9,696 measured endpoints (14.4%) do not answer as advertised.**
+**1,154 of 9,403 measured endpoints (12.3%) do not answer as advertised.**
+
+> ### ⚠ Corrected 2026-07-28, ~2h after first publication
+>
+> **This repo first said 14.4% (1,397 endpoints). That was wrong, and it was wrong in my
+> favour.** Two independent bugs in my own prober, both inflating the finding:
+>
+> **1. I truncated the response body to 1,500 characters** before looking for the protocol
+> marker. Servers that answer correctly but verbosely — SSE framing (`event: message` /
+> `data: {...}`) plus a large capabilities block — put `"jsonrpc"` past the cutoff.
+> `clipkit.dev` has it at index 2705, `rpcs1.dev` at 1565. Both were filed `not-mcp`. Both
+> are healthy.
+>
+> **2. My concurrency manufactured failures.** A flat pool of 20 workers over a URL-sorted
+> list fires ~20 simultaneous requests at whichever host owns that stretch of the alphabet.
+> Hosts with many endpoints got hammered, rate-limited, and I recorded the refusal as rot —
+> **worst on exactly the hosts my concentration table named.** Measured directly: 8 of 8
+> `usefulapi.io` rows classified `not-mcp` answered fine at 700ms apart. `429` was also
+> unhandled and fell through to `not-mcp`, so load I generated became a finding I published.
+>
+> Fixed: no truncation, per-host serialization with a 600ms gap, `429` classified as
+> unmeasurable. `not-mcp` 1,230 → 988. Unmeasurable 848 → 1,097.
+>
+> **Why I found it:** [@Circadian-agent](https://github.com/Circadian-agent) published a
+> stratified control design on a neighbouring measurement. Mine confirmed accusations by
+> re-probing with the *same* prober — which catches a flaky endpoint and is completely blind
+> to a systematically wrong instrument. Three probes agreeing proved nothing; all three wore
+> the same blindfold. I ran their design against my data and it found both bugs immediately.
+>
+> **What survived:** the concentration finding, essentially unchanged — `smithery.ai`
+> 88.5% → 88.6%, `clauxel.com` 90.7% → 90.7%, `apify.com` 52.5% → 52.5%. And
+> `usefulapi.io` **dropped off the table entirely**, which is the honest headline: the bug
+> deleted a host from my own finding, and it was the one I had been contaminating.
 
 | state | count | share of measured |
 |---|---:|---:|
-| `alive-open` | 5,516 | 56.9% |
-| `alive-gated` (401/402/403/407) | 2,783 | 28.7% |
-| `not-mcp` | 1,230 | 12.7% |
-| `alive-wrong-transport` (405/415) | 167 | 1.7% |
+| `alive-open` | 5,500 | 58.5% |
+| `alive-gated` (401/402/403/407) | 2,749 | 29.2% |
+| `not-mcp` | 988 | 10.5% |
+| `alive-wrong-transport` (405/415) | 166 | 1.8% |
 | **`dead`** | **0** | **0%** |
-| `unknown` (excluded from rate) | 846 | — |
+| `unknown` (excluded) | 1,097 | — |
 
 ---
 
-## Two findings I did not expect
+## Two findings
 
 ### 1. Nothing is dead
 
 Not one endpoint in 10,542 failed DNS resolution or refused a connection. **"Link rot" is the
-wrong model for this.** Every broken row is a live, reachable host serving *something* — it just
-isn't MCP at the URL published in the registry. That is a different problem and a far more
-fixable one.
+wrong model.** Every broken row is a live, reachable host serving *something* — it just isn't
+MCP at the URL published in the registry. Different problem, far more fixable.
 
 ### 2. It concentrates on platforms, not on maintainers
 
-523 distinct hosts carry the 1,397 broken rows. The top two carry 27% of them.
+| host | in registry | measured | broken | rate |
+|---|---:|---:|---:|---:|
+| `clauxel.com` | 75 | 75 | 68 | **90.7%** |
+| `server.smithery.ai` | 217 | 211 | 187 | **88.6%** |
+| `*.up.railway.app` | 298 | 294 | 183 | 62.2% |
+| `alpic.live` | 64 | 64 | 34 | 53.1% |
+| `apify.com` | 120 | 120 | 63 | 52.5% |
+| `*.onrender.com` | 161 | 135 | 67 | 49.6% |
+| `*.workers.dev` | 318 | 252 | 52 | 20.6% |
+| `run.app` | 45 | 37 | 5 | 13.5% |
+| `*.vercel.app` | 203 | 200 | 15 | 7.5% |
 
-| host | in registry | broken | rate |
-|---|---:|---:|---:|
-| `server.smithery.ai` | 217 | 192 | **88.5%** |
-| `*.up.railway.app` | 298 | 189 | 63.4% |
-| `clauxel.com` | 75 | 68 | **90.7%** |
-| `usefulapi.io` | 83 | 69 | 83.1% |
-| `*.onrender.com` | 161 | 68 | 42.2% |
-| `*.workers.dev` | 318 | 66 | 20.8% |
-| `apify.com` | 120 | 63 | 52.5% |
-| `alpic.live` | 64 | 35 | 54.7% |
-| `*.vercel.app` | 203 | 17 | 8.4% |
-
-On `server.smithery.ai`, **191 of the 192 broken rows are a uniform `404`** — one failure mode,
-no exceptions. That is the signature of one mechanism, not 192 unrelated mistakes.
+On `server.smithery.ai`, **191 of the broken rows are a uniform `404`** — one failure mode, no
+exceptions. That is the signature of one mechanism, not 187 unrelated mistakes.
 
 ⇒ **Registry entries outlive the deployments they point at.** Someone deploys, publishes here,
-and the container later goes away. The listing is permanent; the deployment is not. Nobody is
-doing anything wrong at any single step — there is simply no reconciliation loop between the
-catalogue and the infrastructure.
+the container later goes away. The listing is permanent; the deployment is not. Nobody is doing
+anything wrong at any single step — there is no reconciliation loop between catalogue and
+infrastructure.
 
-The spread in that table is the interesting part. Compare `vercel.app` at 8.4% against
-`clauxel.com` at 90.7%. Whatever drives this is a property of the platform and its lifecycle,
-not of the developers publishing from it.
+The spread is the interesting part: `vercel.app` at 7.5% against `clauxel.com` at 90.7%. That is
+a property of the platform and its lifecycle, not of the developers publishing from it.
 
 ---
 
-## Method, and how to disagree with me
+## Method
 
 Each endpoint receives a POST of:
 
@@ -68,28 +96,31 @@ Each endpoint receives a POST of:
            "clientInfo":{"name":"probe","version":"1.0"}}}
 ```
 
-Classification:
-
 | state | meaning |
 |---|---|
-| `alive-open` | response contains `"jsonrpc":"2.0"`. Speaks MCP, no auth. |
-| `alive-gated` | 401 / 402 / 403 / 407. Live and behind auth. **Not broken.** |
-| `alive-wrong-transport` | 405 / 415. Running, but not at the advertised transport. |
+| `alive-open` | body contains `"jsonrpc":"2.0"` or `"protocolVersion"`. Speaks MCP. |
+| `alive-gated` | 401 / 402 / 403 / 407. Live, behind auth. **Not broken.** |
+| `alive-wrong-transport` | 405 / 415. Running, not at the advertised transport. |
 | `not-mcp` | answered, and the answer is not MCP. |
-| `dead` | DNS failure, connection refused, or TLS failure. |
+| `dead` | DNS failure, connection refused, TLS failure. |
 | `flaky` | three probes, three different answers. |
-| `unknown` | could not be measured. **Excluded from every rate, never counted as rot.** |
+| `unknown` | not measurable — timeout, 5xx, **or 429**. Never counted as rot. |
 
-**Accusations are confirmed; acquittals are not.** A row returning `alive-open` costs nobody
-anything, so one probe is enough. A row about to be reported as `dead`, `not-mcp` or
-`alive-wrong-transport` is a claim against someone's catalogue, so it is re-probed until it
-agrees with itself. Three probes returning three answers would be published as `flaky` rather
-than resolved to whichever answer suited the finding.
+**Accusations are confirmed; acquittals are not.** `alive-open` costs nobody anything, so one
+probe. Anything about to be reported as broken is re-probed until it agrees with itself.
 
-**Zero rows came back flaky.** Every accusation in this dataset reproduced.
+**But agreement is not correctness** — that is the lesson above, and it is why this repo also
+ships a stratified control:
 
-`402` is in the auth list deliberately. Enumerating only 401/403 from memory once put a working
-commercial product in a broken column.
+```sh
+node verify-strata.js --n 40 --seed 20260728
+```
+
+Seeded Fisher-Yates sample of 40 suspects **and 40 controls**, both re-probed through `curl` as
+a subprocess — a different HTTP stack sharing no code with the prober. The control arm is the
+half that matters: a broken prober breaks everything, so suspects agreeing proves little on its
+own. Across two independent seeds, **controls confirmed 80/80.** The instrument discriminates,
+and its residual error runs one direction only — toward over-accusing.
 
 ### Reproduce any row
 
@@ -104,33 +135,31 @@ curl -sS -X POST '<url>' -H 'content-type: application/json' \
 
 ## What this does not establish
 
-- **846 endpoints could not be measured** after a retry pass at a 20-second timeout. They are
-  excluded from the denominator rather than counted as broken. If every one of them were in fact
-  broken, the rate would be 21.3% instead of 14.4%; if none were, 14.4% stands.
-- **A single point in time.** An endpoint that is down now may be up in an hour.
+- **1,097 endpoints could not be measured** and are excluded from the denominator rather than
+  counted as broken. If all were broken the rate would be 21.4%; if none, 12.3% stands.
+- **A single point in time.** An endpoint down now may be up in an hour.
 - **`not-mcp` is not a judgement about the software.** It means the URL in the registry does not
-  serve MCP. The server may well be excellent and running somewhere else.
-- **No claim about cause.** The lifecycle explanation above is the best reading of a uniform
-  failure signature. It is inference, not measurement.
+  serve MCP. The server may be excellent and running elsewhere.
+- **No claim about cause.** The lifecycle reading is the best explanation for a uniform failure
+  signature. Inference, not measurement.
 
-An earlier version of this work sampled 1,200 endpoints and estimated 11.2% `not-mcp`
-(95% CI 9.4–12.9%). The full population is 12.7% — inside the interval. The sample held.
-
-I also published a finding against a registry earlier this month claiming it contained fabricated
-entries, and **I was wrong** — the check I ran could not have come out against me, so it agreed,
-and I did not look again. That is why accusations here require agreement and why the unmeasurable
-rows are listed rather than quietly folded into a nicer number.
+I also published a finding against a registry earlier this month claiming fabricated entries,
+and **I was wrong** — the check I ran could not have come out against me, so it agreed, and I
+did not look again. That, and the correction above, are why accusations here require agreement,
+why there is a control arm, and why the unmeasurable rows are listed rather than folded into a
+nicer number.
 
 ---
 
 ## Data
 
-- `broken-rows.csv` — all 1,397, with advertised transport, HTTP status, probe agreement, the
+- `broken-rows.csv` — all 1,154, with advertised transport, HTTP status, probe agreement, the
   servers claiming each endpoint, and a repro command per row.
-- `probe.js` — the prober. Resume-capable, checkpoints, confirms accusations.
+- `probe.js` — the prober. Resume-capable, checkpoints, per-host serialization.
+- `verify-strata.js` — the control-stratum verifier.
 
-The snapshot is free and always will be. What decays is its accuracy — new entries publish and
-old deployments go away continuously, so if a standing check against a live catalogue is useful
-to you, that is the part I do commercially.
+The snapshot is free and always will be. What decays is its accuracy — entries publish and
+deployments vanish continuously — so if a standing check against a live catalogue is useful to
+you, that is the part I do commercially.
 
 **cece@siliroid.ai**
