@@ -69,9 +69,21 @@ async function probeOnce(url) {
     const status = r.status;
     // 402 is auth too — a live commercial service behind a paywall. Enumerating 401/403
     // from memory once put a working product in my broken column.
+    // 429 is NOT a finding — it is a refusal to be measured, and it fell through to
+    // `not-mcp` before, which is how load I generated became rot I reported.
+    if (status === 429) return { state: 'unknown', status, note: 'rate limited' };
     if ([401, 402, 403, 407].includes(status)) return { state: 'alive-gated', status };
-    const body = (await r.text()).slice(0, 1500);
-    if (/"jsonrpc"\s*:\s*"2\.0"/.test(body)) return { state: 'alive-open', status };
+    // ⛔ DO NOT TRUNCATE. This read `.slice(0,1500)` and it systematically over-counted
+    // `not-mcp`: a stratified control found 4/40 suspects were healthy servers whose
+    // marker sat past the window — clipkit.dev at index 2705, rpcs1.dev at 1565. SSE
+    // framing (`event: message\ndata: {...}`) plus a large capabilities block pushes it
+    // out. Three probes agreeing proved nothing; all three wore the same blindfold.
+    // Search the whole body, and accept the protocol handshake shape as well as the
+    // envelope, since some servers answer with a bare `result` object.
+    const body = await r.text();
+    if (/"jsonrpc"\s*:\s*"2\.0"/.test(body) || /"protocolVersion"\s*:/.test(body)) {
+      return { state: 'alive-open', status };
+    }
     if (status >= 500) return { state: 'unknown', status, note: 'server error' };
     if (status === 405 || status === 415) return { state: 'alive-wrong-transport', status };
     return { state: 'not-mcp', status };
@@ -108,9 +120,35 @@ async function probe(url) {
   return { state: 'flaky', probes: 3, note: 'three probes, three answers: ' + seen.join('/') };
 }
 
+// ⛔ PER-HOST SERIALIZATION. A flat pool of 20 workers over a list sorted by URL sends
+// ~20 simultaneous requests to whichever host owns that stretch of the alphabet. Hosts
+// with many endpoints therefore get hammered, rate-limit, and I record the 429/404 as
+// rot — so THE INSTRUMENT MANUFACTURES THE FINDING, and worst on exactly the hosts the
+// concentration story names. Measured: 8/8 usefulapi.io rows classified `not-mcp` at
+// conc 20 answered fine at 700ms apart. Parallelism now runs ACROSS hosts, never within
+// one, with a polite gap between same-host calls.
+const HOST_GAP_MS = parseInt(arg('gap', '600'), 10);
+
+function hostOf(u) { try { return new URL(u).hostname; } catch { return u; } }
+
 async function pool(items, n, fn) {
-  let i = 0;
-  await Promise.all(Array.from({ length: n }, async () => { while (i < items.length) await fn(items[i++]); }));
+  const byHost = new Map();
+  for (const it of items) {
+    const h = hostOf(it.url);
+    if (!byHost.has(h)) byHost.set(h, []);
+    byHost.get(h).push(it);
+  }
+  const queues = [...byHost.values()];
+  let qi = 0;
+  await Promise.all(Array.from({ length: Math.min(n, queues.length) }, async () => {
+    while (qi < queues.length) {
+      const q = queues[qi++];
+      for (let k = 0; k < q.length; k++) {
+        if (k) await sleep(HOST_GAP_MS);
+        await fn(q[k]);
+      }
+    }
+  }));
 }
 
 function load() {
